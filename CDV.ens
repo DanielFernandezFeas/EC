@@ -1,0 +1,888 @@
+; Macros
+LEA:      MACRO  (reg, ETIQ)
+          or     reg, r0,  low(ETIQ)
+          or.u   reg, reg, high(ETIQ)
+          ENDMACRO
+		  
+DBNZ:	  MACRO	(reg, ETIQ)
+		  sub reg, reg, 1
+		  cmp r2, reg, r0
+		  bb0 eq, r2, ETIQ
+		  ENDMACRO
+		  
+PUSH: 	  MACRO(ra)
+			subu	r30, r30, 4
+			st		ra, r30, 0
+			ENDMACRO
+			
+POP:	  MACRO(ra)
+			ld		ra,r30,0
+			addu	r30,r30,4
+			ENDMACRO
+
+ESCRIBE:  MACRO(ra)
+			ld.bu	ra, r23, r10
+			st.b	ra, r31, r19
+			sub	r19, r19, 1
+			add		r10, r10, 1
+			ENDMACRO
+
+
+; Código
+		org 0x1000
+		
+LongCad:	addu	r31, r30, r0
+			ld  r12, r31, 0
+			or	r29, r0, r0		;igualar r29 a 0
+			xor   r10, r10, r10  	; Contador de caracteres
+BUCLC:      ld.bu  r3, r12, r10	   ; lectura del caracter (MEM[r12+r10])
+            addu   r10, r10, 1     ; se incrementa el contador
+		    cmp    r2, r3, 0       ; comprobación de final
+            bb1    ne, r2, BUCLC     ; si no es cero, vuelve al bucle
+FINLC:      sub    r10, r10, 1     ; resta el n+ que queda
+		    or     r29, r10, r10   ; en caso contrario, FIN.
+
+			jmp    (r1)
+	
+		
+BuscaCar:	PUSH	(r1)
+			PUSH	(r31)
+			addu	r31, r30, r0
+			
+			ld		r5, r31, 8
+			ld		r6, r31, 12		;dirección de ref
+			ld		r7, r31, 16		;inicio
+			ld		r8, r31, 20		;fin
+			or		r29, r0, r0		;pone r29 a 0
+			
+bucleBC:	ld.bu	r20, r6, r7
+			cmp 	r3, r7, r8	;compara contador con fin
+			bb0		lo, r3, FinBC
+			cmp 	r3, r20, r5	;compara C con r20
+			bb1		eq, r3, FinBC
+			add 	r7, r7, 1	;incrementa contador
+			bsr bucleBC
+			
+FinBC:		
+			sub		r29, r7, r0
+			or 		r30, r31, r31
+			POP	(r31)
+			POP	(r1)
+			jmp (r1)
+			
+		
+		
+CoincidenCad:	PUSH	(r1)
+				PUSH	(r31)
+				addu	r31, r30, r0
+				
+				ld		r5, r31, 8	;frase 1
+				ld		r6, r31, 12	;frase 2
+				or		r10, r0, 0 ;contador
+				or		r29, r0, r0	;pone r29 a 0
+				
+bucleCC:		ld.bu	r15, r5, r10
+				ld.bu	r16, r6, r10
+				cmp		r3, r15, r0
+				bb1		eq, r3, finCC	;fin de frase
+				cmp		r3, r15, r16
+				bb0		eq, r3, finCC	;r5 =/ r6
+				add		r29, r29, 1
+				add		r10, r10, 1
+				bsr		bucleCC
+				
+finCC:			POP	(r31)
+				POP	(r1)
+				jmp (r1)
+
+
+
+
+BuscaMax:	PUSH	(r1)
+			PUSH	(r31)
+			addu	r31, r30, r0
+			
+			ld		r23, r31, 16
+			ld		r26, r31, 12		;max
+			ld		r25, r31, 8		;dirección de ref
+			
+			xor     r27, r27, r27       ;Contador de longitud
+			xor     r28, r28, r28		;marcador de posicion
+			or		r29, r0, r0			;pone r29 a 0
+			or		r28, r0, r0			;pone r28 a 0
+			or		r27, r0, r0			;pone r27 a 0
+				
+ bucleBM: 	cmp 	r3, r28, 255
+			bb1 	eq, r3, FIN
+			cmp 	r3, r28, r26
+			bb1 	eq, r3, FIN
+			ld.bu	r20, r25, r28		;r20 = letra de posicion
+			ld.bu   r21, r25, r26 		;r21 = letra de max
+			
+		
+			PUSH(r26)						;paso de parametros
+			PUSH(r28)
+			PUSH(r25)
+			PUSH(r21)
+			
+			bsr BuscaCar					;BuscaCar seria con estos parametros
+											;deshacer parmetros de la funcion
+			
+			POP(r21)
+			POP(r25)
+			POP(r28)
+			POP(r26)
+			
+			cmp r3, r29, r26					;compara salida con max
+			bb1 eq, r3, FIN
+			add  r28, r29, 0					;actualizar valor
+			
+			add		r17, r25, r28				;puntero a ref de pos 
+			add 	r18, r25, r26				; puntero a ref de max
+
+			PUSH(r18)
+			PUSH(r17)
+
+			bsr CoincidenCad						;devuelve numero de coincidencias
+			
+			POP(r17)
+			POP(r18)
+
+		
+			cmp r3, r29, 255
+			bb1 eq, r3, FIN
+			cmp r3, r29, r27
+			bb1 gt, r3, SIGUE
+			add r28, r28, 1
+			br bucleBM
+			
+			
+SIGUE:		add r27, r29, 0
+			st 	r28, r23, 0
+			br bucleBM
+			
+FIN:		cmp r3, r27, 0
+			bb1 eq, r3, FIN2
+			add r29, r27, 0
+			POP(r31)
+			POP(r1)
+			jmp(r1)
+			
+FIN2:		or		r29, r0, r0
+			sub		r3, r0,  1
+			st 		r3, r23, 0
+			POP(r31)
+			POP(r1)
+			jmp(r1)
+			
+			
+
+
+Comprime:		PUSH	(r1)				;
+				PUSH	(r31)				;
+				addu	r31, r30, r0		;
+
+				ld		r22, r30, 12		;comprdo
+				ld		r23, r30, 8 	;dirección de texto
+				add		r24, r22, 4		;dirección mapa de bits
+				add		r13, r0, 0x27
+				
+				PUSH(r23)					;Creación del marco de pila
+				bsr LongCad					;
+				POP	(r23)	
+											;
+				
+				or		r14, r29, r0		;
+				divu	r29, r29, 4
+				mulu	r29, r29, 4			;
+				add		r29, r29, 4
+				addu	r31, r30, r0
+				subu	r30, r30, r29
+				sub		r19, r0, 1
+				or		r16, r31, r31
+				
+				ld 		r10, r0, r0			;puntero de texto
+
+CarInc:			cmp		r3, r10, 8
+				bb1		eq, r3, BucleComp
+				ESCRIBE	(r5)
+				br		CarInc
+				
+BucleComp:		cmp		r3, r10, r14
+				bb1		ge, r3, FinComp
+				add		r9, r0, 0x600
+				PUSH	(r16)
+				PUSH	(r9)
+				PUSH	(r10)
+				PUSH    (r23)
+				bsr 	BuscaMax
+				POP		(r23)
+				POP		(r10)
+				POP		(r9)
+				POP		(r16)
+
+				cmp		r3, r29, 4
+				bb1		ge, r3, Mayor
+				ESCRIBE (r5)
+
+				clr		r4, r4, r13
+				sub		r13, r13, 1
+				cmp		r3, r13, 0x1F
+				bb0		eq, r3, BucleComp
+				add		r13, r0, 0x27
+				add		r24, r24, 1
+				st.b	r4, r24, 0
+				or		r4, r0, r0
+
+				br		BucleComp
+
+				
+Mayor:			ld		r9, r9, 0
+				st.b	r9, r31, r19
+				subu	r19, r19, 1
+				divu	r9, r9, 100
+				st.b    r9, r31, r19
+				subu	r19, r19, 1
+				st.b	r29, r31, r19
+				subu	r19, r19, 1
+				add		r10, r10, r29
+
+
+				set		r4, r4, r13
+				sub		r13, r13, 1
+				cmp		r3, r13, 0x1F
+				bb0		eq, r3, BucleComp
+				add		r13, r0, 0x27
+				add		r24, r24, 1
+				st.b	r4, r24, 0
+				or		r4, r0, r0
+
+				br		BucleComp
+
+FinComp:		
+				add		r24, r24, 1
+				st.b	r4, r24, 0
+				st.b 		r14, r22, r0
+				divu		r14, r14, 100
+				st.b 		r14, r22, 1
+				add			r29, r0, 1
+				st.b		r29, r22, 2
+				subu		r29, r24, r22
+				add			r29, r29, 1
+				st.b 		r29, r22, 3
+				divu		r29, r29, 100
+				st.b 		r29, r22, 4
+
+				sub			r29,r0, 1
+Copiatxt:		cmp			r3, r29, r19				
+				bb1			lo, r3, FinComprime
+				add			r24, r24, 1
+				ld.b		r16, r31, r29
+				st.b		r16, r24, r0
+				sub 		r29, r29, 1
+				br			Copiatxt
+				
+FinComprime:	subu 		r29, r24, r22
+				or			r30, r31, r31
+				POP(r31)
+				POP(r1)
+				jmp(r1)
+
+;-------------------------------------------------
+
+Descomprime:	PUSH	(r1)				;
+				PUSH	(r31)				;
+				addu	r31, r30, r0		;
+
+				ld		r24, r31, 12		;dirección frase descomprimida
+				ld      r25, r31, 8		    ;direccion de frase comprimida
+			
+				xor r28, r28, r28
+				xor r27, r27, r27
+				xor r22, r22, r22 		
+				or r7, r0, 0
+				or r8, r0, 5
+				or r4, r0, 128	;posicion mapa de bits
+		
+LSCMP:			cmp r3, r28, 1
+				bb1 eq, r3, PASO0
+				
+				ld.bu r20, r25, r28
+				add r28, r28 ,1
+				br LSCMP
+				
+PASO0:			or r15, r20, 0		;longitud de la oracion sin comprimir
+
+BUCLEN:			;Mira la cantidad de caracter que habra sin comprimir 
+				cmp r3, r28, 3
+				bb1 eq, r3, PASO1
+				
+				ld.bu	r20, r25, r28; Numerox8 de caracterres no comprimibles
+				add 	r28, r28, 1
+				br BUCLEN
+				
+PASO1:			or   r13,r20, 0				;guardar com valor mul
+				mulu r14, r13, 8            ;multiplicar por 8 el valor de byte 3
+			
+BUCLE123:		;Mira el desplazamiento que hay hasta el comienzo de la oracio 
+				 cmp 	r3, r28, 4
+				 bb1 eq, r3, SIGUE123
+		 
+				 ld.bu	r20, r25, r28	;r20 = posicion en la que empieza la frase
+				 add 	r28, r28, 1
+				 br BUCLE123
+				 
+SIGUE123:		or r12, r20, 0			;guardar como valor desplazamiento
+				or r19, r20, 0 
+				or r28, r0, r0 
+				sub r7, r12, r8			;tamaño mapa de mips
+				
+
+SIGUE456:
+				cmp r3, r28, r14
+				bb1 eq, r3, SIGUE789
+				ld.bu  r20, r25, r12 		; caracter de la posicon que indica arriba
+				st.b r20, r24, r28			;copiar hasta 1/8
+				add r12, r12, 1
+				add r28, r28, 1
+				br SIGUE456
+
+SIGUE789:		
+				
+				or r13, r0, r0 
+				cmp r3, r8, r19				;posicion tamaño de bits igual posicion comienzo frase
+				bb1 eq, r3, FinComprime1
+				
+				
+				
+				
+				ld.bu r6, r25, r8		;primer byte del mapa de mips posicion cabecera+1
+				br BuscaBit
+				
+BuscaBit:		
+				cmp r3, r28, r15			;longitud cadena
+				bb1 eq, r3, FinComprime1
+				cmp r3, r4, 0
+				bb1 eq, r3, SIGUE111
+				and r23, r6, r4 		;comprar caracter con bit
+				ld.bu  r20, r25, r12		;caracteres de la cadena 
+				cmp r3, r23, 0
+				bb1 eq, r3, ESCRIBE0
+				or r18, r0, r20					;cogiendo el valor del caracter del bit 1
+				or r9, r0, r12
+				add r9, r9, 2
+				ld.bu r21, r25, r9
+				
+				br ESCRIBE1
+				
+SIGUE111:		or r4, r0, 128
+				add r8, r8, 1
+				br SIGUE789
+				
+ESCRIBE0:		st.b r20, r24, r28
+				add r28, r28, 1
+				add r12, r12, 1
+				divu r4, r4, 2
+				;mulu r4, r4, 2
+				br BuscaBit
+				
+ESCRIBE1:
+				cmp r3, r13, r21
+				bb1 eq, r3, BUCLE4
+				ld.bu r20, r24, r18				;leer el caracter en la parte no comprimida
+				st.b r20, r24, r28
+				add r28, r28, 1
+				add r12, r12, 1
+				add r13, r13, 1
+				add r18, r18, 1
+				br ESCRIBE1
+          
+BUCLE4:			divu r4, r4, 2
+				;mulu r4, r4, 2
+				subu r16, r21, 3
+				subu r12, r12, r16
+				or r13,r0, r0
+				or r21, r0, r0
+				br BuscaBit
+			
+				
+FinComprime1:	add r29, r28, 0
+				add r28, r28, 1
+				add r21, r0, 0x00
+				st.b r21, r24, r28 
+				POP(r31)
+				POP(r1)
+				jmp(r1)
+				
+;------------------------------------------------------------
+
+Verifica:		PUSH	(r1)				;
+				PUSH	(r31)				;
+				addu	r31, r30, r0		;
+				
+				ld		r20, r31, 8			;dirección texto
+				ld		r21, r31, 12		;Longitud Original
+				ld		r22, r31, 16		;Longitud Final
+
+				PUSH	(r20)
+				bsr		LongCad
+				POP		(r20)
+				or		r31, r30, r30
+				or		r10, r0, r29
+				st		r29, r21, 0
+		
+				add		r5, r29, 7
+				divu	r4, r5, 8
+				add		r4, r4, 4
+				add		r4, r4, r29
+
+
+				divu	r4, r4, 4
+				mulu	r4, r4, 4
+				add		r4, r4, 4
+				subu	r30, r30, r4		
+				or		r26, r0, r30		;PilaCom
+
+
+				divu	r27, r29, 4
+				mulu	r27, r27, 4
+				add		r27, r27, 4
+				sub		r30, r30, r27
+				or		r27, r0, r30		;PilaDes
+
+				PUSH	(r10)
+				PUSH	(r22)
+				
+				PUSH	(r27)
+
+				PUSH	(r26)
+				PUSH	(r20)
+				bsr		Comprime
+				POP		(r20)
+				POP		(r26)
+
+				POP		(r27)
+				PUSH	(r20)
+
+				PUSH	(r27)
+				PUSH	(r26)
+				bsr		Descomprime
+				POP		(r26)
+				POP		(r27)
+				or		r11, r0, r29
+				POP		(r20)
+				POP		(r22)
+				POP		(r10)
+
+
+
+				or		r28, r0, r0
+				cmp		r3, r11, r10
+				bb0		eq, r3, FIN1V
+				PUSH	(r27)
+				PUSH	(r20)
+				bsr		CoincidenCad
+				POP		(r20)
+				POP		(r27)
+				cmp		r3, r29, r11
+				bb1		eq, r3, FIN0V
+
+				sub		r28, r28, 1
+FIN1V:			sub		r28, r28, 1
+FIN0V:			or 		r29, r28, r0	
+				st		r11, r22, 0
+
+				or 		r30, r31, r0
+				POP(r31)
+				POP(r1)
+				jmp(r1)
+				
+; DatosLongCar
+
+ 		    org 0x8000
+		    ;Prueba1
+DATOS1: data   "Prueba\0"
+		    ;Prueba2
+DATOS2: data   "123456789 123456789 12\0A"
+			;Prueba3
+DATOS3: data    "Pruebbba\0"	
+			;Prueba4
+DATOS4: data    "\0"
+		org 0x8100
+VALOR1:  data 0x00012000
+;  
+; Datos BuscaCar
+;
+			org    0x8200
+			;Prueba1
+C1:     data	"-"
+REF1:	data	"AAAABBBBCCCCDDDDEEEE_Fin.__.0"
+from1:	data	4
+to1:	data	25
+
+			;Prueba2
+C2:		data	"*"
+REF2:	data	"*2345*78*0\0"
+from2:	data	4
+to2:	data	10
+
+			;Prueba4
+REF4:	data	0x40302010, 0x80706050, 0xA090
+
+			;Prueba5
+REF5:		data	"abcdefghijklmnopqrstuv"
+C5:	data	"z"
+;
+;	Datos CoincidenCad
+;
+			;Prueba1
+CCP11:		data	"Now you can watch the match with more than one English"
+CCP12:		data	"Now you can watch th match with more than one English"
+
+			;Prueba2
+CCP21:		data	"Now you can watch the match"
+CCP22:		data	"Now you can watch the match"
+
+;
+;	Datos BuscaMax1
+;
+			;Prueba1
+			
+MAX: data 	7
+D1:  data  "0123789789\0"
+			;Prueba2
+D2:  data   "0123456789\0"
+			;Prueba3
+D3:  data	"tres tristes tigres comen trigo en un trigal, el primer tigre que...\0"
+;
+;
+;	Datos Comprime
+;
+Dcom:  data	"tres tristes tigres comen trigo en un trigal, el primer tigre que...\0"
+Dcom2: data "0123456789\0"
+Dcom3: data "  |#$&%#$&][{{} #!$&#$&%($)%%)#%($)%}}{|zy][{{}"
+
+P1LC:	or 		r30, r0 ,0x9000
+		or		r31, r30, r30
+		LEA    (r12, DATOS1)   ; Dirección de comienzo de la cadena
+		bsr    LongCad
+		stop
+		
+P2LC:   or 		r30, r0 ,0x9000
+		or		r31, r30, r30
+		LEA    (r12, DATOS2)   ; Dirección de comienzo de la cadena
+		bsr    LongCad
+		stop
+		
+P3LC:   or 		r30, r0 ,0x9000
+		or		r31, r30, r30
+		LEA    (r12, DATOS3)   ; Dirección de comienzo de la cadena
+		bsr    LongCad
+		stop
+
+P4LC: 	or 		r30, r0 ,0x9000
+		or		r31, r30, r30
+		LEA    (r12, DATOS4)   ; Dirección de comienzo de la cadena
+		bsr    LongCad
+		stop
+
+PBC1:	or 		r30, r0 ,0x9000
+		or		r31, r30, r30
+		
+		or		r11, r0, 0x5F
+		LEA		(r10, REF1)
+		or		r12, r0, 4
+		or		r13, r0, 25
+		
+		PUSH	(r13)
+		PUSH	(r12)
+		PUSH	(r10)
+		PUSH	(r11)
+		
+		bsr		BuscaCar
+
+		POP		(r11)
+		POP		(r12)
+		POP		(r10)
+		POP		(r11)
+		stop
+
+
+PBC2:	;Saltamos una C con to y lee la siguiente
+		or 		r30, r0 , 0x9000
+		or		r31, r30, r30
+		
+		or		r11, r0, 0x2A
+		LEA		(r10, REF2)
+		or		r12, r0, 4
+		or		r13, r0, 10
+		
+		PUSH	(r13)
+		PUSH	(r12)
+		PUSH	(r10)
+		PUSH	(r11)
+		
+		bsr		BuscaCar
+		
+		POP		(r11)
+		POP		(r12)
+		POP		(r10)
+		POP		(r11)
+		stop
+
+
+PBC3:	;P3 buscando "1" (no está)
+		or 		r30, r0 , 0x9000
+		or		r31, r30, r30
+		
+		or		r11, r0, 0x31
+		LEA		(r10, REF2)
+		or		r12, r0, 4
+		or		r13, r0, 10
+		
+		PUSH	(r13)
+		PUSH	(r12)
+		PUSH	(r10)
+		PUSH	(r11)
+		
+		bsr		BuscaCar
+		
+		POP		(r11)
+		POP		(r12)
+		POP		(r10)
+		POP		(r11)
+		stop
+		
+PBC4:	;Cadena de valores numericos y c en la última posicion
+		or 		r30, r0 , 0x9000
+		or		r31, r30, r30
+		
+		or		r11, r0, 0xA0
+		LEA		(r10, REF4)
+		or		r12, r0, 1
+		or		r13, r0, 10
+		
+		PUSH	(r13)
+		PUSH	(r12)
+		PUSH	(r10)
+		PUSH	(r11)
+		
+		bsr		BuscaCar
+		
+		POP		(r11)
+		POP		(r12)
+		POP		(r10)
+		POP		(r11)
+		stop
+		
+PBC5:	;to > from
+		or 		r30, r0 , 0x9000
+		or		r31, r30, r30
+		
+		or		r11, r0, 0xA0
+		LEA		(r10, REF4)
+		or		r12, r0, 12
+		or		r13, r0, 10
+		
+		PUSH	(r13)
+		PUSH	(r12)
+		PUSH	(r10)
+		PUSH	(r11)
+		
+		bsr		BuscaCar
+		
+		POP		(r11)
+		POP		(r10)
+		POP		(r12)
+		POP		(r13)
+		stop
+		
+PBC6:	or 		r30, r0 , 0x9000
+		or		r31, r30, r30
+		or		r10, r0, 10
+		or		r11, r0, 0
+		LEA		(r12, REF5)
+		LEA		(r13, C2)
+		
+		PUSH	(r10);to
+		PUSH	(r11);from
+		PUSH	(r12);ref
+		PUSH	(r13);C
+		
+		bsr		BuscaCar
+		
+		POP		(r13)
+		POP		(r12)
+		POP		(r11)
+		POP		(r10)
+		stop
+		
+PCC1:	or 		r30, r0 , 0x9000
+		or		r31, r30, r30
+		
+		LEA 	(r20, CCP11)
+		LEA		(r21, CCP12)
+		PUSH	(r20)
+		PUSH	(r21)
+		
+		bsr		CoincidenCad
+		
+		POP		(r21)
+		POP		(r20)
+		stop
+		
+PCC2:	or 		r30, r0 , 0x9000
+		or		r31, r30, r30
+		
+		LEA 	(r20, CCP21)
+		LEA		(r21, CCP22)
+		PUSH	(r20)
+		PUSH	(r21)
+		
+		bsr		CoincidenCad
+		
+		POP		(r21)
+		POP		(r20)
+		stop
+		
+			
+PrD1: 		or 		r30, r0 ,0x9000
+			or		r31, r30, r30
+			
+			or		r23, r0, 0x800
+			or 		r10, r0, 7
+			LEA		(r11, D1); cadena de caracteres
+		
+			
+			PUSH	(r23)
+			PUSH 	(r10)
+			PUSH 	(r11)
+			
+			bsr BuscaMax
+			
+			POP 	(r11)
+			POP 	(r10)
+			POP		(r23)
+			stop
+			
+			
+PrD2: 		or 		r30, r0 ,0x9000
+			or		r31, r30, r30
+			
+			or		r23, r0, 0x800
+			or 		r10, r0, 7
+			LEA		(r11, D2); cadena de caracteres
+		
+			
+			
+			PUSH 	(r11)
+			PUSH 	(r10)
+			PUSH	(r23)
+			
+			bsr BuscaMax
+			
+			PUSH	(r23)
+			POP 	(r10)
+			POP 	(r11)
+			stop
+			
+PrD3: 		or 		r30, r0 ,0x9000
+			or		r31, r30, r30
+			
+			LEA		(r11, D3); cadena de caracteres
+			or 		r10, r0, 26
+			or		r23, r0, 0x800
+			
+			PUSH	(r11)
+			PUSH 	(r10)
+			PUSH 	(r23)
+			
+			bsr BuscaMax
+			
+			POP		(r23)
+			POP 	(r10)
+			POP 	(r11)
+			stop
+			
+			
+			
+PCOMP1:		or 		r30, r0 ,0x9000
+			or		r31, r30, r30
+			
+			or		r10, r0, 0x300
+			LEA		(r11, Dcom);
+			
+			PUSH	(r10)
+			PUSH	(r11)
+			
+			bsr		Comprime
+			
+			POP		(r11)
+			POP		(r10)
+			stop
+			
+PCOMP2:		or 		r30, r0 ,0x9000
+			or		r31, r30, r30
+			
+			or		r12, r0, 0x300
+			LEA		(r11, Dcom2);
+			
+			PUSH	(r12)
+			PUSH	(r11)
+			
+			bsr		Comprime
+			
+			POP		(r11)
+			POP		(r12)
+			stop
+			
+PCOMP3:		or 		r30, r0 ,0x9000
+			or		r31, r30, r30
+			
+			or		r12, r0, 0x300
+			LEA		(r11, Dcom3);
+			
+			PUSH	(r12)
+			PUSH	(r11)
+			
+			bsr		Comprime
+			
+			POP		(r11)
+			POP		(r12)
+			stop
+			
+PVER1:		or 		r30, r0 ,0x9000
+			or		r31, r30, r30
+			
+			or		r13, r0, 0x128
+			or		r12, r0, 0x120
+			LEA		(r11, D2);
+			
+			PUSH	(r13)
+			PUSH	(r12)
+			PUSH	(r11)
+			
+			bsr		Verifica
+			
+			POP		(r11)
+			POP		(r12)
+			POP		(r13)
+			stop
+			
+PVER2:		or 		r30, r0 ,0x9000
+			or		r31, r30, r30
+			
+			or		r13, r0, 0x128
+			or		r12, r0, 0x120
+			LEA		(r11, Dcom);
+			
+			PUSH	(r13)
+			PUSH	(r12)
+			PUSH	(r11)
+			
+			bsr		Verifica
+			
+			POP		(r11)
+			POP		(r12)
+			POP		(r13)
+			stop
